@@ -12,7 +12,7 @@
 # make program = Download the hex file to the device
 #----------------------------------------------------------
 
-TARGET = main
+TARGET = clock
 
 # Define the compiler we will be using
 CC = avr-gcc
@@ -106,8 +106,8 @@ program:
 clean:
 	@echo "========================================"
 	@echo "Cleaning up"
-	rm -f main
-	rm -f main.hex
+	rm -f $(TARGET)
+	rm -f $(TARGET).hex
 	@echo "========================================"
 
 
