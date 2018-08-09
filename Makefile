@@ -30,7 +30,7 @@ OPT = 2
 
 # If I add more source files, need to create individual objs
 OBJDIR = .
-SRC = $(TARGET).c
+SRC = i2c.c $(TARGET).c
 
 # Compiler flag for the C standard level. Not currently used
 CSTANDARD = -std=c11
@@ -87,7 +87,7 @@ copyversion:
 	@echo
 
 elf:
-	$(CC) $(FLAGS) -o $(TARGET) $(TARGET).c
+	$(CC) $(FLAGS) -o $(TARGET) $(SRC)
 
 hex:
 	$(AVRCOPY) $(COPY_FLAGS) $(TARGET) $(TARGET).hex

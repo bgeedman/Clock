@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "i2c.h"
 
 #define RED_LED         PD3
 #define BLUE_LED        PD4
@@ -35,6 +36,12 @@
 #define NUM_MODES       5
 #define NUM_COLORS      8
 
+
+#define DS1307_WRITE    0xD0
+#define DS1307_READ     0xD1
+
+#define BCDtoDEC(x)     ((x & 0x0F) + (10 * ((x >> 4) & 0x0F)))
+#define DECtoBCD(x)     ((x % 10) | ((x /10) << 4))
 
 
 uint8_t gBackgrounds[NUM_BACKGROUNDS][RESOLUTION] = {
@@ -115,6 +122,7 @@ void change_second_color(void);
 
 
 
+
 uint8_t gButtonMask = 0x00;
 uint8_t gCycleColor[] = {OFF, RED, PURPLE, BLUE, CYAN, GREEN, YELLOW, WHITE};
 uint8_t gMode = 0;
@@ -126,6 +134,7 @@ uint8_t gBackground = 0;
 
 
 typedef struct Hand {
+    uint8_t value;
     uint8_t color;
     uint8_t pos1;
     uint8_t pos2;
@@ -194,25 +203,39 @@ void change_second_color(void) {
 
 
 
+
+
 void increment_hour(void) {
-    gHourHand.pos1++;
-    if (gHourHand.pos1 >= RESOLUTION) {
-        gHourHand.pos1 = 0;
+    // what i really need to do is update the hour value
+    /* gHourHand.pos1++; */
+    /* if (gHourHand.pos1 >= RESOLUTION) { */
+    /*     gHourHand.pos1 = 0; */
+    /* } */
+    /* gHourHand.pos2++; */
+    /* if (gHourHand.pos2 >= RESOLUTION) { */
+    /*     gHourHand.pos2 = 0; */
+    /* } */
+
+    gHourHand.value++;
+    if (gHourHand.value > 12) {
+        gHourHand.value = 1;
     }
-    gHourHand.pos2++;
-    if (gHourHand.pos2 >= RESOLUTION) {
-        gHourHand.pos2 = 0;
-    }
+
 }
 
 void increment_minute(void) {
-    gMinuteHand.pos1++;
-    if (gMinuteHand.pos1 >= RESOLUTION) {
-        gMinuteHand.pos1 = 0;
-    }
-    gMinuteHand.pos2++;
-    if (gMinuteHand.pos2 >= RESOLUTION) {
-        gMinuteHand.pos2 = 0;
+    /* gMinuteHand.pos1++; */
+    /* if (gMinuteHand.pos1 >= RESOLUTION) { */
+    /*     gMinuteHand.pos1 = 0; */
+    /* } */
+    /* gMinuteHand.pos2++; */
+    /* if (gMinuteHand.pos2 >= RESOLUTION) { */
+    /*     gMinuteHand.pos2 = 0; */
+    /* } */
+
+    gMinuteHand.value++;
+    if (gMinuteHand.value > 60) {
+        gMinuteHand.value = 1;
     }
 }
 
@@ -346,6 +369,21 @@ int main(void) {
 
     PORTA |= (1 << BUTTON1) | (1 << BUTTON2) | (1 << BUTTON3);
 
+
+    i2c_init();
+    i2c_start(DS1307_WRITE);
+    i2c_write(0x00);
+    i2c_stop();
+
+    i2c_start(DS1307_READ);
+    uint8_t seconds = i2c_read_ack();
+    uint8_t minutes = i2c_read_ack();
+    uint8_t hours = i2c_read_nack();
+    i2c_stop();
+
+    gHourHand.value = hours;
+    gMinuteHand.value = minutes;
+    gSecondHand.value = seconds;
 
     while (1) {
 
