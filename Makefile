@@ -33,13 +33,13 @@ OBJDIR = .
 SRC = $(TARGET).c
 
 # Compiler flag for the C standard level. Not currently used
-CSTANDARD = -std=gnu99
+CSTANDARD = -std=c11
 
 # math library linkage if needed. Not currently used
 MATH_LIB = -lm
 
 # Compiler flags to pass
-FLAGS = -Wall -O$(OPT) -mmcu=$(MCU) -DF_CPU=$(F_CPU)
+FLAGS = -Wall -O$(OPT) -mmcu=$(MCU) -DF_CPU=$(F_CPU) $(CSTANDARD)
 
 # AVR tool to create object file
 AVRCOPY = avr-objcopy
