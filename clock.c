@@ -1,255 +1,22 @@
+/*
+ * File:    clock.c
+ * Description: Main file for the hard drive clock project.
+ * Author:  bgeedman
+ * Date:    Aug 10. 2018
+ *
+ */
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/eeprom.h>
+#include <avr/pgmspace.h>
 #include <util/delay.h>
-#include <stdio.h>
-#include <string.h>
 
+#include "backgrounds.h"
+#include "constants.h"
 #include "i2c.h"
 
-#define RED_LED         PD3
-#define BLUE_LED        PD4
-#define GREEN_LED       PD5
-#define PWM_TICK_WIDTH  64
-#define PWM             PD7
 
-
-#define NUM_BUTTONS     3
-#define BUTTON1         PD4
-#define BUTTON2         PD5
-#define BUTTON3         PD6
-
-
-#define OFF             0x00
-#define RED             (1 << RED_LED)
-#define BLUE            (1 << BLUE_LED)
-#define GREEN           (1 << GREEN_LED)
-#define CYAN            (1 << BLUE_LED) | (1 << GREEN_LED)
-#define PURPLE          (1 << RED_LED) | (1 << BLUE_LED)
-#define YELLOW          (1 << RED_LED) | (1 << GREEN_LED)
-#define WHITE           (1 << RED_LED) | (1 << BLUE_LED) | (1 << GREEN_LED)
-
-#define RESOLUTION      180
-#define TICKS           5e-7
-
-#define NUM_BACKGROUNDS 4
-#define NUM_MODES       5
-#define NUM_COLORS      8
-
-
-#define DS1307_WRITE    0xD0
-#define DS1307_READ     0xD1
-
-#define BCDtoDEC(x)     ((x & 0x0F) + (10 * ((x >> 4) & 0x0F)))
-#define DECtoBCD(x)     ((x % 10) | ((x /10) << 4))
-
-
-uint8_t gBackgrounds[NUM_BACKGROUNDS][RESOLUTION] = {
-{
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
-    OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF
-},
-{
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED
-},
-{
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN,
-    GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN, GREEN
-},
-/* { */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, */
-/*     BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE */
-/* }, */
-/* { */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN */
-/* }, */
-/* { */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, */
-/*     PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE, PURPLE */
-/* }, */
-/* { */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, */
-/*     YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW */
-/* }, */
-/* { */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE */
-/* }, */
-/* /1* CANDY CANE *1/ */
-/* { */
-/*     RED, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     RED, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     RED, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     RED, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     RED, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     RED, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     RED, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     RED, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     RED, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, CYAN, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/*     WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, */
-/* }, */
-
-{
-    WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE,
-    WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE,
-    WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE,
-    WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE, WHITE,
-    WHITE, WHITE, WHITE, WHITE, WHITE, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    RED, RED, RED, RED, RED, RED, RED, RED, RED, RED,
-    BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE,
-    BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE,
-    BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE,
-    BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE,
-    BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE,
-    BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE,
-    BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE,
-    BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE,
-    BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE, BLUE
-},
-};
-
-
-/*                  FUNCTION DECLARATION                */
 void set_duty_cycle(uint16_t width);
 void init_ESC(void);
 void set_color(uint8_t color);
@@ -266,7 +33,6 @@ void calculate_second_position(void);
 void read_time(void);
 
 
-/*              GLOBAL VARIABLE DECLARATION              */
 void (*gButtonHandlers[NUM_MODES][NUM_BUTTONS])(void) =
 {   {increment_mode, NULL, NULL},
     {increment_mode, NULL, change_background},
@@ -296,7 +62,18 @@ uint8_t gBackground;
 
 
 
-
+/*
+ * Function:    increment_mode
+ * ---------------------------
+ *  Cycles through various modes of operation and blinks a white light
+ *  to indicate which mode. This function is the button handler for
+ *  button 1 presses and modifies the index(gMode) for selecting the
+ *  correct button handlers for other modes.
+ *  Modes are in order:
+ *      NORMAL, BACKGROUND EDIT, HOUR EDIT, MINUTE EDIT, SECOND EDIT
+ *
+ *  Modifies: gModeFlag, gMode, LED color
+ */
 void increment_mode(void)
 {
     gModeFlag = 1;
@@ -313,35 +90,136 @@ void increment_mode(void)
 }
 
 
+/*
+ * Function:    change_background
+ * ------------------------------
+ *  Cycles through the different backgrounds defined in 'backgrounds.h'
+ *  and saves the value in EEPROM memory. This function is the button
+ *  handler for button 3 when in BACKGROUND EDIT mode
+ *
+ *  Modifies: gBackground, *EEPROM_BACKGROUND_ADDR
+ */
 void change_background(void)
 {
     gBackground++;
     if (gBackground >= NUM_BACKGROUNDS)
         gBackground = 0;
+    eeprom_write_byte((uint8_t *)EEPROM_BACKGROUND_ADDR, gBackground);
 }
 
+
+/*
+ * Function:    increment_hour
+ * ---------------------------
+ *  Increments the hour hands value and saves the value to the DS1307.
+ *  This function is the button handler for button 2 when in HOUR EDIT
+ *  mode.
+ *
+ *  Modifies: gHourHand.value, *DS1307_HOUR_ADDR
+ */
+void increment_hour(void)
+{
+    gHourHand.value++;
+    if (gHourHand.value > 12)
+        gHourHand.value = 1;
+
+    i2c_start(DS1307_WRITE);
+    i2c_write(DS1307_HOUR_ADDR);
+    i2c_write(DECtoBCD(gHourHand.value));
+    i2c_stop();
+}
+
+
+/*
+ * Function:    change_hour_color
+ * ------------------------------
+ *  Cycles through the hour hand colors and saves the value in
+ *  EEPROM memory. This function is the button handler for button 3
+ *  when in HOUR EDIT mode.
+ *
+ *  Modifies: gHourHand.color, *EEPROM_HOUR_ADDR
+ */
 void change_hour_color(void)
 {
     gHourHand.color++;
     if (gHourHand.color >= NUM_COLORS)
         gHourHand.color = 0;
+    eeprom_write_byte((uint8_t *)EEPROM_HOUR_ADDR, gHourHand.color);
 }
 
+
+/*
+ * Function:    increment_minute
+ * -----------------------------
+ *  Increments the minute hand value and saves the value to the DS1307.
+ *  This function is the button handler for button 2 when in MINUTE EDIT
+ *  mode.
+ *
+ *  Modifies: gMinuteHand.value, *DS1307_SECOND_ADDR, *DS1307_MINUTE_ADDR
+ */
+void increment_minute(void)
+{
+    gMinuteHand.value++;
+    if (gMinuteHand.value > 59)
+        gMinuteHand.value = 0;
+
+    i2c_start(DS1307_WRITE);
+    i2c_write(DS1307_SECOND_ADDR);
+    i2c_write(DECtoBCD(0));
+    i2c_write(DECtoBCD(gMinuteHand.value));
+    i2c_stop();
+}
+
+
+/*
+ * Function:    change_minute_color
+ * --------------------------------
+ *  Cycles through the minute hand colors and saves the value in
+ *  EEPROM memory. This function is the button handler for button 3
+ *  when in MINUTE EDIT mode.
+ *
+ *  Modifies: gMinuteHand.color, *EEPROM_MINUTE_ADDR
+ */
 void change_minute_color(void)
 {
     gMinuteHand.color++;
     if (gMinuteHand.color >= NUM_COLORS)
         gMinuteHand.color = 0;
+    eeprom_write_byte((uint8_t *)EEPROM_MINUTE_ADDR, gMinuteHand.color);
 }
 
+
+/*
+ * Function:    change_second_color
+ * --------------------------------
+ *  Cycles throuh the second hand colors and saves the value in
+ *  EEPROM memory. This function is the button handler for button 3
+ *  when in SECOND EDIT mode.
+ *
+ *  Modifies: gSecondHand.color, *EEPROM_SECOND_ADDR
+ */
 void change_second_color(void)
 {
     gSecondHand.color++;
     if (gSecondHand.color >= NUM_COLORS)
         gSecondHand.color = 0;
+    eeprom_write_byte((uint8_t *)EEPROM_SECOND_ADDR, gSecondHand.color);
 }
 
 
+/*
+ * Function:    calculate_hour_position
+ * ------------------------------------
+ *  Calculates the position for the hour hand. This is done by
+ *  taking the modulo of the current hour, and adding the fractional
+ *  value of the minute hand and multiplying by sections per hour.
+ *
+ *  EX:  5:20
+ *  ---------
+ *  ((5 % 12) + (20 / 60.0)) * 15 => (5 + .33333) * 15 => 80
+ *
+ *  Modifies: gHourHand.pos1, gHourHand.pos2
+ */
 void calculate_hour_position(void)
 {
     gHourHand.pos2 = ((gHourHand.value % 12) + (gMinuteHand.value / 60.0)) * 15;
@@ -351,6 +229,20 @@ void calculate_hour_position(void)
         gHourHand.pos1 = gHourHand.pos2 - 1;
 }
 
+
+/*
+ * Function:    calculate_minute_position
+ * --------------------------------------
+ *  Calculates the position for the minute hand. This is done by
+ *  taking the fractional value of the minute hand and multiplying
+ *  by the total number of sections.
+ *
+ *  EX: 45'
+ *  -------
+ *  (45 / 60.0) * 180 => 135
+ *
+ *  Modifies: gMinuteHand.pos1, gMinuteHand.pos2
+ */
 void calculate_minute_position(void)
 {
     gMinuteHand.pos2 = (gMinuteHand.value / 60.0) * 180;
@@ -360,6 +252,20 @@ void calculate_minute_position(void)
         gMinuteHand.pos1 = gMinuteHand.pos2 - 1;
 }
 
+
+/*
+ * Function:    calculate_second_position
+ * --------------------------------------
+ *  Calculates the position for the second hand. This is done by
+ *  taking the fractional value of the second hand and multiplying
+ *  by the total number of sections.
+ *
+ *  EX: 30"
+ *  -------
+ *  (30 / 60.0) * 180 => 90
+ *
+ *  Modifies: gSecondHand.pos1, gSecondHand.pos2
+ */
 void calculate_second_position(void)
 {
     gSecondHand.pos2 = (gSecondHand.value / 60.0) * 180;
@@ -369,45 +275,148 @@ void calculate_second_position(void)
         gSecondHand.pos1 = gSecondHand.pos2 - 1;
 }
 
-
-void increment_hour(void)
+/*
+ * Function:    set_duty_cycle
+ * ---------------------------
+ *  Sets the PWM duty cycle for communicating with the ESC. It
+ *  calculates this by taking the width, adding 50 and dividing
+ *  by the length of a single PWM tick. Adding 50 is a trick for
+ *  making sure the integer division rounds the correct direction.
+ *
+ *  Modifies: OCR2
+ */
+void set_duty_cycle(uint16_t width)
 {
-    gHourHand.value++;
-    if (gHourHand.value > 12)
-        gHourHand.value = 1;
-
-    // save the new hour to the RTC
-    i2c_start(DS1307_WRITE);
-    i2c_write(0x02);
-    i2c_write(DECtoBCD(gHourHand.value));
-    i2c_stop();
+    OCR2 = ((width + 50) / PWM_TICK_WIDTH);
 }
 
 
-void increment_minute(void)
+/*
+ * Function:    set_color
+ * ----------------------
+ *  Sets the color of the LEDs.  First turn off all the bits, and
+ *  then turn on the color.
+ *
+ *  Modifies: PORTD
+ */
+void set_color(uint8_t color)
 {
-    gMinuteHand.value++;
-    if (gMinuteHand.value > 59)
-        gMinuteHand.value = 0;
+    PORTD &= ~(WHITE);
+    PORTD |= color;
+}
 
-    // save the new minute to the RTC
+
+/*
+ * Function:    init_ESC
+ * ---------------------
+ *  Initializes the ESC by sending the correct PWM signals. First
+ *  sets up TIMER 2 for fast PWM non-inverted mode and then sends
+ *  a pusle of 500 microseconds to arm the device. Wait 7 seconds,
+ *  and then send pulse of 1.2 milliseconds.
+ *
+ *      | WGM21 | WGM20 | Mode of Operation
+ *  ----------------------------------------
+ *   0  | 0     | 0     | Normal
+ *  ---------------------------------------
+ *   1  | 0     | 1     | PWM, Phase correct
+ *  ---------------------------------------
+ *   2  | 1     | 0     | CTC
+ *  ---------------------------------------
+ *   3  | 1     | 1     | Fast PWM
+ *  ---------------------------------------
+ *
+ *
+ *  COM21 | COM20 | Description
+ *  ---------------------------------------
+ *   0    | 0     | Normal port operation, OC2 disconnected
+ *  ---------------------------------------
+ *   0    | 1     | Reserved
+ *  ---------------------------------------
+ *   1    | 0     | non-inverting mode
+ *  ---------------------------------------
+ *   1    | 1     | Inverting mode
+ *  ---------------------------------------
+ *
+ *
+ *  CS22 | CS21 | CS20 | Description
+ *  ---------------------------------------
+ *    0  |   0  |   0  | Timer/counter stopped
+ *  ---------------------------------------
+ *    0  |   0  |   1  | No Prescaling
+ *  ---------------------------------------
+ *    0  |   1  |   0  | 8 prescaler
+ *  ---------------------------------------
+ *    0  |   1  |   1  | 32 prescaler
+ *  ---------------------------------------
+ *    1  |   0  |   0  | 64 prescaler
+ *  ---------------------------------------
+ *    1  |   0  |   1  | 128 prescaler
+ *  ---------------------------------------
+ *    1  |   1  |   0  | 256 prescaler
+ *  ---------------------------------------
+ *    1  |   1  |   1  | 1024 prescaler
+ *  ---------------------------------------
+ *
+ *  Modifies: TCCR2, LED color
+ */
+void init_ESC(void)
+{
+    TCCR2 = (1 << WGM21) | (1 << WGM20) | (1 << COM21);
+    TCCR2 |= (1 << CS22) | (1 << CS21) | (1 << CS20);
+
+    set_duty_cycle(500);
+
+    for (uint8_t i = 0; i < 7; i++)
+    {
+        set_color(gCycleColor[i]);
+        _delay_ms(1000);
+    }
+
+    set_color(OFF);
+    set_duty_cycle(1200);
+}
+
+
+/*
+ * Function:    read_time
+ * ----------------------
+ *  Reads the time from the DS1307 and sets the hand values.
+ *  The data read off must be converted from Binary coded
+ *  data to decimal.
+ *
+ *  Modifies: gSecondHand.value, gMinuteHand.value, gHourHand.value
+ */
+void read_time(void)
+{
+    i2c_init();
     i2c_start(DS1307_WRITE);
-    i2c_write(0x00);
-    i2c_write(DECtoBCD(0)); // zero out the seconds when we set the minute
-    i2c_write(DECtoBCD(gMinuteHand.value));
+    i2c_write(DS1307_SECOND_ADDR);
+    i2c_stop();
+
+    i2c_start(DS1307_READ);
+    gSecondHand.value = BCDtoDEC(i2c_read_ack());
+    gMinuteHand.value = BCDtoDEC(i2c_read_ack());
+    gHourHand.value = BCDtoDEC(i2c_read_nack());
     i2c_stop();
 }
 
 
 /*
- * Interrupt handler for dividing the clock face
+ * Function:    ISR for TIMER0_COMP vector
+ * ---------------------------------------
+ *  Sets the LED colors for the current section. This interrupt
+ *  should trigger everytime the platter has advanced a section.
+ *  The time this takes should be relatively consistent and is
+ *  adjusted when we complete 1 revolution
+ *
+ *  Modifies: gPlatterPos, LED color
  */
 ISR(TIMER0_COMP_vect)
 {
     gPlatterPos++;
     if (gPlatterPos < RESOLUTION && !gModeFlag)
     {
-        set_color(gBackgrounds[gBackground][gPlatterPos]);
+        set_color(pgm_read_byte(&(gBackgrounds[gBackground][gPlatterPos])));
 
         if (gPlatterPos == gSecondHand.pos1 || gPlatterPos == gSecondHand.pos2)
             set_color(gCycleColor[gSecondHand.color]);
@@ -419,107 +428,79 @@ ISR(TIMER0_COMP_vect)
 }
 
 
-
-
 /*
- * Interrupt handler for when the sensor trips
+ * Function:    ISR for INT0 vector
+ * --------------------------------
+ *  Triggers when the hall effect sensor is activated. This interrupt
+ *  disables the TIMER 0 interrupt so things are not stepping on each
+ *  other. It resets the TIMER 0 counter to 0 and then re-enables the
+ *  interrupt. Also, it adjusts the length of OCR0 to help ensure that
+ *  full resolution sections are triggered.
+ *
+ *  Modifies: TIMSK, TCNT0, OCR0, gPlatterPos
  */
 ISR(INT0_vect)
 {
     TIMSK &= ~(1 << OCIE0);
     TCNT0 = 0;
     TIMSK |= (1 << OCIE0);
+    /* Help adjust for extreme cases of slowness, like starting up */
     if (OCR0 < 160 || OCR0 > 200)
         OCR0 = 179;
 
+    /* We had too many sector triggers, slow down TIMER 0 */
     if (gPlatterPos > 180)
         OCR0++;
+    /* We had too few sector triggers, speed up TIMER 0 */
     else if (gPlatterPos < 180)
         OCR0--;
-
     gPlatterPos = 0;
 }
 
 
 
-void set_duty_cycle(uint16_t width)
-{
-    OCR2 = ((width + 50) / PWM_TICK_WIDTH);
-}
-
-
-
-void init_ESC(void)
-{
-    TCCR2 = (1 << WGM21) | (1 << WGM20) | (1 << COM21);
-    TCCR2 |= (1 << CS22) | (1 << CS21) | (1 << CS20);
-    set_duty_cycle(500);
-    uint8_t i;
-    for (i = 0; i < 7; i++)
-    {
-        set_color(gCycleColor[i]);
-        _delay_ms(1000);
-    }
-    set_color(OFF);
-    set_duty_cycle(1200);
-}
-
-
-void set_color(uint8_t color)
-{
-    PORTD &= ~(WHITE);
-    PORTD |= color;
-}
-
-
-void read_time(void)
-{
-    i2c_init();
-    i2c_start(DS1307_WRITE);
-    i2c_write(0x00); // set address to 0x00
-    i2c_stop();
-
-    i2c_start(DS1307_READ);
-    gSecondHand.value = BCDtoDEC(i2c_read_ack());
-    gMinuteHand.value = BCDtoDEC(i2c_read_ack());
-    gHourHand.value = BCDtoDEC(i2c_read_nack());
-    i2c_stop();
-}
-
 
 int main(void)
 {
 
-     uint8_t button_const[NUM_BUTTONS] = {BUTTON1, BUTTON2, BUTTON3};
-     uint8_t buttons[NUM_BUTTONS] = {0};
+    uint8_t button_const[NUM_BUTTONS] = {BUTTON1, BUTTON2, BUTTON3};
+    uint8_t buttons[NUM_BUTTONS] = {0};
 
-    gBackground = 0;            // read this from EEPROM
-    gHourHand.color = 1;        // read this from EEPROM
-    gMinuteHand.color = 4;      // read this from EEPROM
-    gSecondHand.color = 5;      // read this from EEPROM
+    /* Read the saved background and hand colors from EEPROM memory */
+    gBackground       = eeprom_read_byte((const uint8_t *)EEPROM_BACKGROUND_ADDR);
+    gHourHand.color   = eeprom_read_byte((const uint8_t *)EEPROM_HOUR_ADDR);
+    gMinuteHand.color = eeprom_read_byte((const uint8_t *)EEPROM_MINUTE_ADDR);
+    gSecondHand.color = eeprom_read_byte((const uint8_t *)EEPROM_SECOND_ADDR);
 
+    DDRD  |= (1 << RED_LED) | (1 << BLUE_LED) |    /* Set LED pins as outputs */
+             (1 << GREEN_LED) | (1 << PWM);
 
-    DDRD |= (1 << RED_LED) | (1 << BLUE_LED) | (1 << GREEN_LED) | (1 << PWM);
     init_ESC();
-    PORTD |= (1 << PD2); // should enable the pull-up
-    MCUCR = (1 << ISC01); // set as dropping edge
-    GICR = (1 << INT0); // turn on the external interrupt for the sensor
-    // section timer
-    TCCR0 = (1 << WGM01) | (1 << CS01);
-    TIMSK |= (1 << OCIE0);
-    OCR0 = 179;
-    sei();
+    PORTD |= (1 << PD2);                         /* PD2(INT0) pullup resistor */
+    MCUCR  = (1 << ISC01);                               /* Falling edge INT0 */
+    GICR   = (1 << INT0);                   /* Enable external interrupt INT0 */
+
+    TCCR0  = (1 << WGM01) | (1 << CS01);     /* TIMER 0 CTC mode, 8 prescaler */
+    TIMSK |= (1 << OCIE0);                        /* Enable TIMER 0 interrupt */
+    OCR0   = 179;                                   /* Initial OCR for 62 RPS */
+    sei();                                           /* Enable all interrupts */
 
 
-    PORTA |= (1 << BUTTON1) | (1 << BUTTON2) | (1 << BUTTON3);
+    PORTA  = 0x00;
+    /* PORTA |= (1 << BUTTON1) |               /1* Button inputs internal pullups *1/ */
+    /*          (1 << BUTTON2) | */
+    /*          (1 << BUTTON3); */
 
 
     while (1)
     {
         read_time();
+
         calculate_hour_position();
         calculate_minute_position();
         calculate_second_position();
+
+        /* check the buttons states, with some basic debounce */
         for (int i = 0; i < NUM_BUTTONS; i++)
         {
             if (PINA & (1 << button_const[i]))
@@ -541,12 +522,7 @@ int main(void)
                 }
             }
         }
-        _delay_ms(100); // after 10 loops, should i just increment the time
+        _delay_ms(100);
     }
-
     return 0;
 }
-
-
-
-

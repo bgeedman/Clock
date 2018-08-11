@@ -1,3 +1,8 @@
+/*
+ * This library is from:
+ * https://github.com/g4lvanix/I2C-master-lib
+ */
+
 #ifndef  F_CPU
 #define F_CPU 16000000UL
 #endif
