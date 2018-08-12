@@ -31,6 +31,9 @@ void calculate_hour_position(void);
 void calculate_minute_position(void);
 void calculate_second_position(void);
 void read_time(void);
+void update_ds1307(void);
+uint8_t bcd2bin(uint8_t);
+uint8_t bin2bcd(uint8_t);
 
 
 void (*gButtonHandlers[NUM_MODES][NUM_BUTTONS])(void) =
@@ -53,6 +56,19 @@ Hand gHourHand;
 Hand gMinuteHand;
 Hand gSecondHand;
 
+
+struct RTCDate
+{
+    uint8_t seconds;
+    uint8_t minutes;
+    uint8_t hours;
+    uint8_t weekday;
+    uint8_t date;
+    uint8_t month;
+    uint8_t year;
+} gDate;
+
+
 uint8_t gCycleColor[] = {OFF, RED, PURPLE, BLUE, CYAN, GREEN, YELLOW, WHITE};
 uint8_t gMode = 0;
 uint8_t gModeFlag = 0;
@@ -60,6 +76,27 @@ uint8_t gPlatterPos = 0;
 uint8_t gRotations = 0;
 uint8_t gBackground;
 
+
+/*
+ * Function:    bcd2bin
+ * --------------------
+ *  Converts the Binary-coded decimal form of a number to the binary form.
+ *  EX: 0x16 BCD
+ *  ------------
+ *      16 - (6 * (16 / 16)) => 0x10 == 16
+ */
+uint8_t bcd2bin (uint8_t val) { return val - 6 * (val >> 4); }
+
+
+/*
+ * Function:    bin2bcd
+ * --------------------
+ *  Converts the binary form of a number to the Binary-coded decimal form.
+ *  EX: 18 binary == 0x12
+ *  ---------------------
+ *      12 + (6 * (12 / 10)) => 12 + 6 * 1 => 0x18 BCD
+ */
+uint8_t bin2bcd (uint8_t val) { return val + 6 * (val / 10); }
 
 
 /*
@@ -115,7 +152,8 @@ void change_background(void)
  *  This function is the button handler for button 2 when in HOUR EDIT
  *  mode.
  *
- *  Modifies: gHourHand.value, *DS1307_HOUR_ADDR
+ *  Modifies: gHourHand.value, gSecondHand.value
+ *  Calls: update_ds1307
  */
 void increment_hour(void)
 {
@@ -123,10 +161,8 @@ void increment_hour(void)
     if (gHourHand.value > 12)
         gHourHand.value = 1;
 
-    i2c_start(DS1307_WRITE);
-    i2c_write(DS1307_HOUR_ADDR);
-    i2c_write(DECtoBCD(gHourHand.value));
-    i2c_stop();
+    gSecondHand.value = 0;
+    update_ds1307();
 }
 
 
@@ -138,6 +174,7 @@ void increment_hour(void)
  *  when in HOUR EDIT mode.
  *
  *  Modifies: gHourHand.color, *EEPROM_HOUR_ADDR
+ *
  */
 void change_hour_color(void)
 {
@@ -155,7 +192,8 @@ void change_hour_color(void)
  *  This function is the button handler for button 2 when in MINUTE EDIT
  *  mode.
  *
- *  Modifies: gMinuteHand.value, *DS1307_SECOND_ADDR, *DS1307_MINUTE_ADDR
+ *  Modifies: gMinuteHand.value, gSecondHand.value
+ *  Calls: update_ds1307
  */
 void increment_minute(void)
 {
@@ -163,11 +201,8 @@ void increment_minute(void)
     if (gMinuteHand.value > 59)
         gMinuteHand.value = 0;
 
-    i2c_start(DS1307_WRITE);
-    i2c_write(DS1307_SECOND_ADDR);
-    i2c_write(DECtoBCD(0));
-    i2c_write(DECtoBCD(gMinuteHand.value));
-    i2c_stop();
+    gSecondHand.value = 0;
+    update_ds1307();
 }
 
 
@@ -388,15 +423,51 @@ void init_ESC(void)
  */
 void read_time(void)
 {
-    i2c_init();
     i2c_start(DS1307_WRITE);
     i2c_write(DS1307_SECOND_ADDR);
     i2c_stop();
 
     i2c_start(DS1307_READ);
-    gSecondHand.value = BCDtoDEC(i2c_read_ack());
-    gMinuteHand.value = BCDtoDEC(i2c_read_ack());
-    gHourHand.value = BCDtoDEC(i2c_read_nack());
+    gDate.seconds = bcd2bin(i2c_read_ack());
+    gDate.minutes = bcd2bin(i2c_read_ack());
+    gDate.hours = bcd2bin(i2c_read_ack());
+    gDate.weekday = bcd2bin(i2c_read_ack());
+    gDate.date = bcd2bin(i2c_read_ack());
+    gDate.month = bcd2bin(i2c_read_ack());
+    gDate.year = bcd2bin(i2c_read_nack());
+    i2c_stop();
+
+    gSecondHand.value = gDate.seconds;
+    gMinuteHand.value = gDate.minutes;
+    gHourHand.value = gDate.hours;
+}
+
+
+/*
+ * Function:    update_ds1307
+ * --------------------------
+ *  Writes the most recent values of readtime and the changed
+ *  values read when setting the time to the ds1307. First it
+ *  disables the oscillator.
+ *
+ *  Modifies: DS1307
+ */
+void update_ds1307(void)
+{
+    i2c_start(DS1307_WRITE);
+    i2c_write(DS1307_SECOND_ADDR);
+    i2c_write(DS1307_OSC_STOP);
+    i2c_stop();
+
+    i2c_start(DS1307_WRITE);
+    i2c_write(DS1307_SECOND_ADDR);
+    i2c_write(bin2bcd(gSecondHand.value));
+    i2c_write(bin2bcd(gMinuteHand.value));
+    i2c_write(bin2bcd(gHourHand.value));
+    i2c_write(bin2bcd(gDate.weekday));
+    i2c_write(bin2bcd(gDate.date));
+    i2c_write(bin2bcd(gDate.month));
+    i2c_write(bin2bcd(gDate.year));
     i2c_stop();
 }
 
@@ -448,10 +519,10 @@ ISR(INT0_vect)
     if (OCR0 < 160 || OCR0 > 200)
         OCR0 = 179;
 
-    /* We had too many sector triggers, slow down TIMER 0 */
+    /* Too many sector triggers, slow down TIMER 0 */
     if (gPlatterPos > 180)
         OCR0++;
-    /* We had too few sector triggers, speed up TIMER 0 */
+    /* Too few sector triggers, speed up TIMER 0 */
     else if (gPlatterPos < 180)
         OCR0--;
     gPlatterPos = 0;
@@ -459,10 +530,33 @@ ISR(INT0_vect)
 
 
 
-
 int main(void)
 {
+#ifdef TIME_SET
 
+    i2c_init();
+    i2c_start(DS1307_WRITE);
+    i2c_write(DS1307_SECOND_ADDR);
+    i2c_write(bin2bcd(SECOND));
+    i2c_write(bin2bcd(MINUTE));
+    i2c_write(bin2bcd(HOUR));
+    i2c_write(bin2bcd(WEEKDAY));
+    i2c_write(bin2bcd(DATE));
+    i2c_write(bin2bcd(MONTH));
+    i2c_write(bin2bcd(YEAR));
+    i2c_stop();
+
+    DDRD |= (1 << RED_LED) | (1 << BLUE_LED) | (1 << GREEN_LED);
+
+    while(1)
+    {
+        set_color(GREEN);_delay_ms(500);
+        set_color(OFF);_delay_ms(500);
+    }
+
+#else
+
+    i2c_init();
     uint8_t button_const[NUM_BUTTONS] = {BUTTON1, BUTTON2, BUTTON3};
     uint8_t buttons[NUM_BUTTONS] = {0};
 
@@ -485,17 +579,14 @@ int main(void)
     OCR0   = 179;                                   /* Initial OCR for 62 RPS */
     sei();                                           /* Enable all interrupts */
 
-
     PORTA  = 0x00;
-    /* PORTA |= (1 << BUTTON1) |               /1* Button inputs internal pullups *1/ */
-    /*          (1 << BUTTON2) | */
-    /*          (1 << BUTTON3); */
-
+    PORTA |= (1 << BUTTON1) |               /* Button inputs internal pullups */
+             (1 << BUTTON2) |
+             (1 << BUTTON3);
 
     while (1)
     {
         read_time();
-
         calculate_hour_position();
         calculate_minute_position();
         calculate_second_position();
@@ -524,5 +615,8 @@ int main(void)
         }
         _delay_ms(100);
     }
+
+#endif
+
     return 0;
 }

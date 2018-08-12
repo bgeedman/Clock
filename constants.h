@@ -1,9 +1,8 @@
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
-/* macros for converting data read/write to ISC. */
-#define BCDtoDEC(x)     ((x & 0x0F) + (10 * ((x >> 4) & 0x0F)))
-#define DECtoBCD(x)     ((x % 10) | ((x /10) << 4))
+#define BCDtoDEC(x) ((x) - (6 * (x >> 4)))
+#define DECtoBCD(x) ((x) + (6 * (x / 10)))
 
 #define NUM_MODES       5
 #define NUM_COLORS      8
@@ -45,6 +44,7 @@
 #define DS1307_MONTH_ADDR   0x05
 #define DS1307_YEAR_ADDR    0x06
 #define DS1307_CONTROL_ADDR 0x07
+#define DS1307_OSC_STOP     0x80
 
 
 /* EEPROM address definitions */
@@ -52,5 +52,26 @@
 #define EEPROM_HOUR_ADDR        0x01
 #define EEPROM_MINUTE_ADDR      0x02
 #define EEPROM_SECOND_ADDR      0x03
+
+
+/*
+ * Uncomment the below line to enable setting the time.
+ * Set the values to the time desired to set.
+ * SECOND  -- (0..59)
+ * MINUTE  -- (0..59)
+ * HOUR    -- (1..12)
+ * WEEKDAY -- (0..6) {Sunday, Monday, ..., Saturday}
+ * DATE    -- (1..31)
+ * MONTH   -- (1..12)
+ * YEAR    -- (0..99)
+ */
+/* #define TIMESET     1 */
+#define SECOND      0
+#define MINUTE      10
+#define HOUR        1
+#define WEEKDAY     0
+#define DATE        12
+#define MONTH       8
+#define YEAR        18
 
 #endif

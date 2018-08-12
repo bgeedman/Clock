@@ -5,7 +5,7 @@
 
 
 
-const extern uint8_t __attribute__ ((progmem))
+const uint8_t __attribute__ ((progmem))
 gBackgrounds[NUM_BACKGROUNDS][RESOLUTION] = {
 {
     OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF,
